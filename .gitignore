@@ -1,0 +1,41 @@
+# Virtual environments
+.venv/
+venv/
+env/
+.uv/
+
+# Python caches & build artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+dist/
+.installed.cfg
+*.egg
+
+# Testing & linting caches
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# Generated evaluation outputs
+data/output/*
+data/input/*
+!data/output/.gitkeep
+!data/input/.gitkeep
+
+# Environment variables & secrets
+.env
+.env.*
+
+# IDE & OS
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db

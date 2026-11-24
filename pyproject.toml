@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ner-evaluator"
+version = "0.1.0"
+description = "Avaliador modular de modelos NER em português com seqeval e transformers"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "torch",
+    "transformers",
+    "seqeval",
+    "tabulate",
+    "scikit-learn",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+]
+
+[project.scripts]
+ner-eval = "ner_eval.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
