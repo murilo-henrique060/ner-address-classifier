@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import torch
 from transformers import AutoModelForTokenClassification, AutoTokenizer
@@ -64,7 +64,13 @@ class AddressNERPredictor:
 
     def predict(self, sentences_words: List[List[str]]) -> List[List[str]]:
         """Prediz tags BIO para cada sentença, preservando o número de tokens original."""
+        preds, _ = self.predict_with_scores(sentences_words)
+        return preds
+
+    def predict_with_scores(self, sentences_words: List[List[str]]) -> Tuple[List[List[str]], List[float]]:
+        """Prediz tags BIO e retorna também o score médio de confiança por sentença."""
         all_aligned: List[List[str]] = []
+        all_scores: List[float] = []
 
         for i in range(0, len(sentences_words), self.batch_size):
             batch_words = sentences_words[i : i + self.batch_size]
@@ -80,7 +86,9 @@ class AddressNERPredictor:
             )
 
             all_pred_ids: List[List[int]] = []
+            all_token_probs: List[List[float]] = []
             total_chunks = encodings["input_ids"].size(0)
+
             for c_start in range(0, total_chunks, self.batch_size):
                 c_end = c_start + self.batch_size
                 input_ids = encodings["input_ids"][c_start:c_end].to(self.device)
@@ -88,15 +96,21 @@ class AddressNERPredictor:
 
                 with torch.no_grad():
                     logits = self.model(input_ids=input_ids, attention_mask=attention_mask).logits
-                    all_pred_ids.extend(torch.argmax(logits, dim=-1).cpu().tolist())
+                    probs = torch.softmax(logits, dim=-1)
+                    max_probs, pred_ids = torch.max(probs, dim=-1)
+                    all_pred_ids.extend(pred_ids.cpu().tolist())
+                    all_token_probs.extend(max_probs.cpu().tolist())
 
             overflow_mapping = encodings["overflow_to_sample_mapping"].tolist()
             batch_aligned: List[List[str]] = [["O"] * len(w) for w in batch_words]
             seen_per_sample: List[set] = [set() for _ in batch_words]
+            probs_per_sample: List[List[float]] = [[] for _ in batch_words]
 
             for chunk_idx, sample_idx in enumerate(overflow_mapping):
                 word_ids = encodings.word_ids(batch_index=chunk_idx)
                 sub_preds = [self.id2label.get(pid, "O") for pid in all_pred_ids[chunk_idx]]
+                sub_probs = all_token_probs[chunk_idx]
+
                 align_subwords(
                     words=batch_words[sample_idx],
                     word_ids=word_ids,
@@ -105,6 +119,13 @@ class AddressNERPredictor:
                     seen_word_ids=seen_per_sample[sample_idx],
                 )
 
-            all_aligned.extend(batch_aligned)
+                for w_id, prob in zip(word_ids, sub_probs):
+                    if w_id is not None:
+                        probs_per_sample[sample_idx].append(prob)
 
-        return all_aligned
+            all_aligned.extend(batch_aligned)
+            for p_list in probs_per_sample:
+                avg_score = round(sum(p_list) / len(p_list), 4) if p_list else 0.0
+                all_scores.append(avg_score)
+
+        return all_aligned, all_scores

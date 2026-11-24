@@ -5,7 +5,12 @@ import sys
 from pathlib import Path
 from typing import List, Optional
 
-from ner_eval.evaluator import evaluate_predictions, format_table, save_reports
+from ner_eval.evaluator import (
+    evaluate_predictions,
+    format_table,
+    save_label_studio_predictions,
+    save_report_json,
+)
 from ner_eval.filtering import MODEL_CLASSES, extract_entities, filter_tags, resolve_measured_classes
 from ner_eval.predictor import AddressNERPredictor, MODEL_NAME
 from ner_eval.reader import Sentence, read_conll
@@ -82,16 +87,15 @@ def run_evaluation(
     words_list = [s.tokens for s in sentences]
 
     # Predição com alinhamento de subtokens
-    raw_y_pred = predictor.predict(words_list)
+    raw_y_pred, scores = predictor.predict_with_scores(words_list)
     y_pred = [filter_tags(p, allowed_set) for p in raw_y_pred]
 
     # Avaliação com seqeval
     report = evaluate_predictions(y_true, y_pred)
     print("\n" + format_table(report) + "\n")
 
-    # Exportar relatórios
-    output_prefix = output_dir / f"report_{dataset_path.stem}"
-    json_path, csv_path = save_reports(
+    # Exportar relatório de métricas (apenas JSON) e predições para Label Studio
+    report_path = save_report_json(
         report=report,
         metadata={
             "dataset": dataset_path.name,
@@ -100,9 +104,16 @@ def run_evaluation(
             "discarded_classes": discarded,
             "total_sentences": len(sentences),
         },
-        output_prefix=output_prefix,
+        output_path=output_dir / f"report_{dataset_path.stem}.json",
     )
-    print(f"Relatórios exportados:\n  • {json_path}\n  • {csv_path}")
+    ls_path = save_label_studio_predictions(
+        sentences_tokens=words_list,
+        y_pred=raw_y_pred,
+        model_version=MODEL_NAME,
+        output_path=output_dir / f"predictions_{dataset_path.stem}_label_studio.json",
+        scores=scores,
+    )
+    print(f"Arquivos exportados:\n  • Métricas (JSON):      {report_path}\n  • Label Studio (JSON):  {ls_path}")
 
 
 def main(args: Optional[List[str]] = None) -> None:
